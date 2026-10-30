@@ -1,1 +1,1 @@
-"""Task 2 tests (pending implementation)."""
+"""Task 2 real HTTP integration tests."""

@@ -1,1 +1,1 @@
-"""Task 2 package (implementation intentionally pending)."""
+"""Task 2 authenticated MCP HTTP security gateway."""

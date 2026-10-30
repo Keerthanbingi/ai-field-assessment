@@ -65,7 +65,10 @@ python scripts/verify_task1.py
 The pytest suite launches the server as a subprocess, performs initialization, sends genuine
 newline-delimited MCP messages, checks tool schemas and calls, exercises error responses, and
 parses every stdout line as JSON. It separately asserts that startup/request logs appear on
-stderr and never on stdout.
+stderr and never on stdout. `test_official_client.py` independently launches the same server
+through the official SDK `stdio_client` and uses `ClientSession` to initialize, list, and call
+both tools; it also confirms that invalid arguments surface to an SDK client as `McpError`
+`-32602` rather than a tool result.
 
 ## Limitations
 

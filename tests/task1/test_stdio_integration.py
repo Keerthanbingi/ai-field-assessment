@@ -86,6 +86,23 @@ def test_trigger_refund_success_is_simulated(mcp_process: MCPProcess) -> None:
     assert refund["status"] == "simulated"
 
 
+def test_refund_reason_accepts_exact_boundary_and_is_trimmed(mcp_process: MCPProcess) -> None:
+    response = mcp_process.send(
+        tool_call(
+            106,
+            "trigger_refund",
+            {
+                "customer_id": "CUST-00001",
+                "amount": 1,
+                "reason": "  A B C D E F G H I J  ",
+            },
+        )
+    )
+    refund = response["result"]["structuredContent"]
+    assert response["result"]["isError"] is False
+    assert refund["reason"] == "A B C D E F G H I J"
+
+
 @pytest.mark.parametrize(
     "customer_id",
     [
@@ -139,6 +156,32 @@ def test_invalid_refund_amounts(mcp_process: MCPProcess, amount: Any) -> None:
         )
     )
     assert_error(response, 202, -32602)
+
+
+def test_invalid_params_include_safe_diagnostics_without_rejected_value(
+    mcp_process: MCPProcess,
+) -> None:
+    response = mcp_process.send(
+        tool_call(
+            210,
+            "trigger_refund",
+            {
+                "customer_id": "CUST-12345",
+                "amount": "sensitive-invalid-value",
+                "reason": "Duplicate charge",
+            },
+        )
+    )
+    assert_error(response, 210, -32602)
+    assert response["error"]["message"] == "Invalid tool arguments"
+    assert response["error"]["data"]["issues"] == [
+        {
+            "field": "amount",
+            "message": "Input should be a valid number",
+            "type": "float_type",
+        }
+    ]
+    assert "sensitive-invalid-value" not in str(response)
 
 
 @pytest.mark.parametrize("reason", ["too short", "          ", "a b c d e f g h i"])
