@@ -9,7 +9,7 @@ A Python 3.11+ assessment project for four independent AI infrastructure exercis
 
 ## Current status
 
-Tasks 1 and 2 are implemented and verified. Tasks 3–4 are intentionally not implemented yet.
+Tasks 1, 2, and 3 are implemented and verified. Task 4 is intentionally not implemented yet.
 
 ## Quick start
 
@@ -21,6 +21,7 @@ python -m pytest
 python -m ruff check .
 python scripts/verify_task1.py
 python scripts/verify_task2.py
+python scripts/verify_task3.py
 ```
 
 The project uses offline mocks for future integration tests; no paid API is required.
@@ -28,3 +29,5 @@ See `docs/architecture.md`, `docs/verification.md`, and `docs/acceptance_matrix.
 
 Task 1 details and protocol examples are in `docs/task1.md`.
 Task 2 architecture, security policy, and run commands are in `docs/task2.md`.
+Task 3 streaming architecture, safety bounds, latency tradeoffs, and run commands are in
+`docs/task3.md`.

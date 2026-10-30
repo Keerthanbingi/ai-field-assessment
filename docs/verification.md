@@ -209,3 +209,60 @@ During test expansion, one proposed header value with trailing spaces could not 
 HTTPX/h11 because it is illegal at the HTTP transport layer. It was replaced with the legal but
 invalid value `Bearer abc def`; the gateway returned the sanitized invalid-token response and did
 not forward it. This was a test-construction issue, not a gateway failure.
+
+## Task 3 verification
+
+Task 3 was implemented and verified on 2026-10-30 with separate Uvicorn gateway and provider
+processes. All integration cases use HTTPX over real TCP; they do not substitute in-process helper
+calls for the streaming protocol path.
+
+Commands:
+
+```bash
+.venv/bin/python -m pytest tests/task3 -v
+.venv/bin/python scripts/verify_task3.py
+.venv/bin/python -m pytest tests/task1 -q
+.venv/bin/python -m pytest tests/task2 -q
+.venv/bin/python -m pytest
+.venv/bin/python -m ruff check .
+.venv/bin/python -m ruff format --check .
+.venv/bin/python -m pip check
+```
+
+Standalone verifier output:
+
+```text
+PASS: normal text preserved
+BEFORE_DELTAS=["Contact john@","gmail.","com now."]
+AFTER_TEXT=Contact [REDACTED] now.
+PASS: split email redacted
+PASS: split SSN redacted
+PASS: split Luhn-valid card redacted
+PASS: one-byte UTF-8/SSE splits remain valid
+FIRST_SANITIZED_TEXT_MS=1.2
+TOTAL_STREAM_MS=355.5
+PASS: safe output arrives before provider completion
+PASS: malformed provider event fails closed
+Summary: 7/7 checks passed
+```
+
+The first expanded integration run reported 21 passed and two failures. One failure identified a
+real metadata-ordering defect: terminal usage metadata could precede the final safety-buffered
+word. The gateway was changed to defer bounded metadata until the sanitized tail is emitted. The
+second was a test assumption that expected only one delta despite a valid metadata-preserving
+empty delta. After the production fix and corrected assertion, the Task 3 suite passed 23/23.
+
+Two additional defensive cases were then added: malformed JSON containing an email fails closed,
+and a card-like number that fails Luhn is preserved. Final clean-run output:
+
+```text
+Task 3: collected 25 items
+============================== 25 passed in 1.39s ==============================
+Task 1 regression: 39 passed in 7.23s
+Task 2 regression: 36 passed in 1.30s
+Full repository: collected 105 items
+============================= 105 passed in 9.99s ==============================
+All checks passed!
+43 files already formatted
+No broken requirements found.
+```

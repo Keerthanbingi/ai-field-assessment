@@ -32,5 +32,14 @@
 | Task 2.11 | Missing/malformed params, envelopes, batch, notification cannot bypass | PASS | five param cases, four envelope cases, malformed JSON, batch and notification tests; counters unchanged |
 | Task 2.12 | Errors do not expose secrets or internal details | PASS | invalid-token, invalid-param, and unreachable-downstream sanitization assertions |
 | Task 2 audit | Complete executable evidence | PASS (36 Task 2 tests) | `docs/verification.md` independent audit section |
-| Task 3 | Streaming PII guardrail | Not started | — |
+| Task 3.1 | Real asynchronous HTTPX provider streaming | PASS | `app.py:_guarded_stream`; real Uvicorn integration suite |
+| Task 3.2 | Parse UTF-8, SSE frames, and JSON deltas incrementally | PASS | `sse.py:IncrementalSSEParser`; one-byte network split test |
+| Task 3.3 | Email, formatted SSN, and Luhn-valid card redaction | PASS | eight scenario cases in `test_text_and_pii_scenarios` |
+| Task 3.4 | PII spanning arbitrary deltas is not leaked | PASS | built-in split scenarios plus seven arbitrary email split positions |
+| Task 3.5 | Valid SSE and supported metadata preserved | PASS | UTF-8/framing and metadata integration tests |
+| Task 3.6 | Streaming begins before provider completion | PASS | delayed provider test; first text before 250 ms, total over 300 ms |
+| Task 3.7 | Buffering bounded with fail-closed overflow | PASS | 5,000-character integration case plus peak-state assertion |
+| Task 3.8 | Malformed provider data fails closed | PASS | partial SSE and invalid UTF-8 cases; no raw PII in client bytes |
+| Task 3.9 | Termination, disconnect, and cancellation safe | PASS | exact `[DONE]` and real client-disconnect provider-state tests |
+| Task 3 audit | Complete executable evidence | PASS (25 Task 3 tests) | `docs/verification.md` Task 3 section |
 | Task 4 | SQLite rate limiter and fallback router | Not started | — |

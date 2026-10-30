@@ -1,1 +1,1 @@
-"""Task 3 package (implementation intentionally pending)."""
+"""Task 3 streaming LLM gateway guardrail."""
