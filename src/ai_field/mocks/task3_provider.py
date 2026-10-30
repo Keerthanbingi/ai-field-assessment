@@ -118,6 +118,9 @@ async def provider_stream(request: Request) -> StreamingResponse:
             if settings.scenario == "malformed_json":
                 yield b'data: {"choices":[{"delta":{"content":"secret@example.com"}\n\n'
                 return
+            if settings.scenario == "unexpected_text":
+                yield b'data: {"text":"secret@example.com"}\n\n'
+                return
             if settings.scenario == "invalid_utf8":
                 yield b"data: \xff\n\n"
                 return

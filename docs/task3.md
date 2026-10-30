@@ -21,10 +21,12 @@ client -> POST /v1/stream -> Task 3 gateway -> POST /v1/provider/stream -> mock 
 - `src/ai_field/mocks/task3_provider.py` provides deterministic normal, sensitive, delayed,
   byte-split, malformed, and cancellation scenarios without an external API.
 
-The supported provider format is a single-choice, OpenAI-style JSON delta carried in SSE. JSON
-fields such as ID, model, sequence, choice index, and finish reason are preserved. SSE `event`,
-`id`, and numeric `retry` fields and JSON events without `choices` are also preserved. A terminal
-`data: [DONE]` event is required.
+The supported provider format is a single-choice, OpenAI-style JSON delta carried in SSE. A strict
+allowlist covers documented event, choice, and delta fields; unknown text-bearing shapes fail
+closed instead of being treated as metadata. JSON fields such as ID, model, sequence, choice
+index, and finish reason are preserved. SSE `event`, `id`, and numeric `retry` fields and allowed
+JSON metadata events without `choices` are also preserved. A terminal `data: [DONE]` event is
+required.
 
 ## Incremental safety algorithm
 
@@ -51,8 +53,11 @@ fail-closed and can over-redact an unusually long non-sensitive token.
 
 Email local parts are theoretically unbounded. The gateway does not attempt unbounded buffering:
 the 320-character cap and suppression behavior above define its handling. SSE events are capped at
-65,536 decoded characters. Up to 32 non-text metadata events may be deferred while a sensitive
-candidate is unresolved, ensuring terminal usage metadata follows the sanitized text it describes.
+65,536 decoded characters. Naturally arriving HTTPX chunks are sliced into 4,096-byte pieces before
+parsing, giving parser application state a bound of the event cap plus one parser slice. HTTPX owns
+one transient network chunk, which is not accumulated by the gateway. Up to 32 non-text metadata
+events may be deferred while a sensitive candidate is unresolved, ensuring terminal usage
+metadata follows the sanitized text it describes.
 
 ## Run the services
 
@@ -114,7 +119,7 @@ Run the reproducible verifier and tests:
 
 The gateway does not wait for provider completion. Safe prefixes ending at an unambiguous boundary
 are emitted immediately. In the recorded delayed-provider check, the first sanitized text arrived
-in 1.2 ms while total completion took 355.5 ms because the provider intentionally waited 350 ms
+in 1.4 ms while total completion took 353.9 ms because the provider intentionally waited 350 ms
 before its second delta.
 
 Potentially sensitive suffixes necessarily add boundary-dependent latency. For example, the
@@ -133,3 +138,24 @@ address is complete. Correctness takes priority over releasing those characters 
   the gateway therefore returns a sanitized SSE `event: error` and terminates.
 - This assessment guardrail uses pattern detection, not semantic entity recognition. Production
   systems would commonly combine it with provider-specific schemas and a broader DLP policy.
+
+## Independent audit findings
+
+The adversarial audit found and fixed five genuine issues:
+
+1. A space-separated card followed immediately by sentence punctuation could be split between the
+   numeric and email suffix states, leaking the card. Numeric candidates are now finalized before
+   a non-numeric boundary can start an overlapping suffix.
+2. A normal trailing sentence period prevented email matching. The domain-continuation check now
+   distinguishes a trailing period from a period followed by another domain label.
+3. Unknown JSON objects without `choices` were forwarded as metadata, allowing an unexpected
+   `text` field to bypass inspection. Provider event, choice, and delta fields are now allowlisted.
+4. An unterminated SSE line was not checked against the event limit until a newline arrived. The
+   parser now enforces the cap while the partial line is still arriving.
+5. Asking HTTPX for fixed 4,096-byte chunks introduced response coalescing and defeated early
+   streaming. The gateway now consumes naturally arriving chunks immediately and slices each one
+   only when feeding the bounded parser.
+
+The final live audit covered every single and pair of split positions for representative email,
+SSN, and card values, plus fixed-seed random partitions, positional contexts, punctuation,
+consecutive values, byte-divided SSE, UTF-8 splits, overflow, and malformed events.

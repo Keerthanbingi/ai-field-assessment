@@ -39,6 +39,11 @@ class IncrementalSSEParser:
         self._event_lines: list[str] = []
         self._event_chars = 0
         self._max_event_chars = max_event_chars
+        self.peak_buffered_chars = 0
+
+    @property
+    def buffered_chars(self) -> int:
+        return self._event_chars + len(self._line_buffer)
 
     def _dispatch(self) -> SSEEvent | None:
         if not self._event_lines:
@@ -81,6 +86,10 @@ class IncrementalSSEParser:
             if self._event_chars > self._max_event_chars:
                 raise ProviderStreamError("provider SSE event exceeded the configured limit")
             self._event_lines.append(line)
+            self.peak_buffered_chars = max(self.peak_buffered_chars, self.buffered_chars)
+        self.peak_buffered_chars = max(self.peak_buffered_chars, self.buffered_chars)
+        if self.buffered_chars > self._max_event_chars:
+            raise ProviderStreamError("provider SSE event exceeded the configured limit")
         return events
 
     def feed(self, chunk: bytes) -> list[SSEEvent]:

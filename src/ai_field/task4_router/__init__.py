@@ -1,1 +1,1 @@
-"""Task 4 package (implementation intentionally pending)."""
+"""Task 4 token-aware rate limiter and resilient model router."""

@@ -20,6 +20,19 @@ from ai_field.task3_guardrail.redaction import IncrementalPIIRedactor
 from ai_field.task3_guardrail.sse import IncrementalSSEParser, ProviderStreamError, SSEEvent
 
 logger = logging.getLogger(__name__)
+UPSTREAM_CHUNK_BYTES = 4096
+SUPPORTED_EVENT_KEYS = {
+    "id",
+    "object",
+    "created",
+    "model",
+    "system_fingerprint",
+    "sequence",
+    "choices",
+    "usage",
+}
+SUPPORTED_CHOICE_KEYS = {"index", "delta", "finish_reason", "logprobs"}
+SUPPORTED_DELTA_KEYS = {"content", "role"}
 
 
 class GuardrailSettings(BaseModel):
@@ -78,14 +91,20 @@ def _parse_text_delta(event: SSEEvent) -> tuple[dict[str, Any], str | None]:
         raise ProviderStreamError("provider data was not valid JSON") from error
     if not isinstance(payload, dict):
         raise ProviderStreamError("provider data must be a JSON object")
+    if set(payload) - SUPPORTED_EVENT_KEYS:
+        raise ProviderStreamError("provider event contained unsupported fields")
     choices = payload.get("choices")
     if choices is None:
         return payload, None
     if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):
         raise ProviderStreamError("provider choices shape is unsupported")
+    if set(choices[0]) - SUPPORTED_CHOICE_KEYS:
+        raise ProviderStreamError("provider choice contained unsupported fields")
     delta = choices[0].get("delta")
     if not isinstance(delta, dict):
         raise ProviderStreamError("provider delta shape is unsupported")
+    if set(delta) - SUPPORTED_DELTA_KEYS:
+        raise ProviderStreamError("provider delta contained unsupported fields")
     content = delta.get("content")
     if content is not None and not isinstance(content, str):
         raise ProviderStreamError("provider delta content must be text")
@@ -107,34 +126,36 @@ async def _guarded_stream(
     try:
         async with client.stream("POST", settings.provider_url, json=payload) as response:
             response.raise_for_status()
-            async for chunk in response.aiter_bytes():
+            async for network_chunk in response.aiter_bytes():
                 if await request.is_disconnected():
                     raise asyncio.CancelledError
-                for event in parser.feed(chunk):
-                    if event.data == "[DONE]":
-                        final_text = redactor.finish()
-                        if final_text:
-                            if last_text_event is None:
-                                raise ProviderStreamError("text stream had no delta template")
-                            yield _event_with_content(*last_text_event, final_text)
-                        for deferred in deferred_metadata:
-                            yield deferred
-                        yield event.encode()
-                        saw_done = True
-                        return
-                    parsed, content = _parse_text_delta(event)
-                    if content is None:
-                        if redactor.buffered_chars or redactor.suppressed_kind is not None:
-                            if len(deferred_metadata) >= 32:
-                                raise ProviderStreamError("too many deferred metadata events")
-                            deferred_metadata.append(event.encode())
-                        else:
+                for offset in range(0, len(network_chunk), UPSTREAM_CHUNK_BYTES):
+                    parser_chunk = network_chunk[offset : offset + UPSTREAM_CHUNK_BYTES]
+                    for event in parser.feed(parser_chunk):
+                        if event.data == "[DONE]":
+                            final_text = redactor.finish()
+                            if final_text:
+                                if last_text_event is None:
+                                    raise ProviderStreamError("text stream had no delta template")
+                                yield _event_with_content(*last_text_event, final_text)
+                            for deferred in deferred_metadata:
+                                yield deferred
                             yield event.encode()
-                        continue
-                    last_text_event = (event, parsed)
-                    sanitized = redactor.feed(content)
-                    # Emit metadata even while content is retained for boundary safety.
-                    yield _event_with_content(event, parsed, sanitized)
+                            saw_done = True
+                            return
+                        parsed, content = _parse_text_delta(event)
+                        if content is None:
+                            if redactor.buffered_chars or redactor.suppressed_kind is not None:
+                                if len(deferred_metadata) >= 32:
+                                    raise ProviderStreamError("too many deferred metadata events")
+                                deferred_metadata.append(event.encode())
+                            else:
+                                yield event.encode()
+                            continue
+                        last_text_event = (event, parsed)
+                        sanitized = redactor.feed(content)
+                        # Emit metadata even while content is retained for boundary safety.
+                        yield _event_with_content(event, parsed, sanitized)
             parser.finish()
             if not saw_done:
                 raise ProviderStreamError("provider stream ended without a done event")

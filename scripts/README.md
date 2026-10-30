@@ -6,3 +6,5 @@
 - `verify_task3.py` launches the streaming gateway and mock LLM provider, then verifies
   cross-chunk redaction, byte-split SSE handling, fail-closed errors, and observed streaming
   latency.
+- `verify_task4.py` launches the completion gateway and mock model providers and proves on-disk
+  persistence, bounded fallback, single charging, atomic concurrency, and clock-driven expiry.

@@ -151,8 +151,11 @@ async def test_non_text_metadata_is_preserved(task3_stack: Task3Stack) -> None:
 async def test_safe_text_arrives_before_delayed_provider_finishes(task3_stack: Task3Stack) -> None:
     started = time.monotonic()
     first_text_at: float | None = None
+    provider_state_at_first_text: dict[str, int] | None = None
     raw = bytearray()
     async with httpx.AsyncClient(timeout=5) as client:
+        await client.post(f"{task3_stack.provider_url}/__test__/reset")
+        started = time.monotonic()
         async with client.stream(
             "POST",
             f"{task3_stack.gateway_url}/v1/stream",
@@ -163,10 +166,16 @@ async def test_safe_text_arrives_before_delayed_provider_finishes(task3_stack: T
                 events = parse_sse(bytes(raw)) if raw.endswith(b"\n\n") else []
                 if first_text_at is None and streamed_text(events):
                     first_text_at = time.monotonic() - started
+                    provider_state_at_first_text = (
+                        await client.get(f"{task3_stack.provider_url}/__test__/state")
+                    ).json()
     total = time.monotonic() - started
     assert first_text_at is not None
     assert first_text_at < 0.25
     assert total >= 0.30
+    assert provider_state_at_first_text is not None
+    assert provider_state_at_first_text["active"] == 1
+    assert provider_state_at_first_text["completed"] == 0
     assert streamed_text(parse_sse(bytes(raw))) == "Early safe text. Late text."
 
 
@@ -199,7 +208,10 @@ async def test_luhn_invalid_card_like_number_is_preserved(task3_stack: Task3Stac
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("scenario", ["malformed", "malformed_json", "invalid_utf8"])
+@pytest.mark.parametrize(
+    "scenario",
+    ["malformed", "malformed_json", "unexpected_text", "invalid_utf8"],
+)
 async def test_malformed_provider_stream_fails_closed_without_pii_leak(
     task3_stack: Task3Stack,
     scenario: str,

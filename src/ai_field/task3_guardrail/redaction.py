@@ -12,7 +12,7 @@ EMAIL_RE = re.compile(
     r"[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*"
     r"@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
     r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+"
-    r"(?![A-Za-z0-9.-])"
+    r"(?!(?:[A-Za-z0-9-]|\.[A-Za-z0-9]))"
 )
 SSN_RE = re.compile(r"(?<!\d)\d{3}-\d{2}-\d{4}(?!\d)")
 CARD_RE = re.compile(r"(?<!\d)(?:\d[ -]?){12,18}\d(?!\d)")
@@ -122,6 +122,21 @@ class IncrementalPIIRedactor:
                 if character in allowed:
                     continue
                 self.suppressed_kind = None
+
+            # Finalize a numeric candidate before a non-numeric boundary can
+            # make an overlapping email-like suffix hide its last digit group.
+            previous_email_start = _suffix_start(self.pending, EMAIL_TOKEN_CHARS)
+            previous_numeric_start = _suffix_start(
+                self.pending,
+                NUMERIC_CANDIDATE_CHARS,
+                require_digit=True,
+            )
+            numeric_was_earliest = previous_numeric_start is not None and (
+                previous_email_start is None or previous_numeric_start < previous_email_start
+            )
+            if numeric_was_earliest and character not in NUMERIC_CANDIDATE_CHARS:
+                output.append(redact_complete_text(self.pending))
+                self.pending = ""
 
             self.pending += character
             email_start = _suffix_start(self.pending, EMAIL_TOKEN_CHARS)

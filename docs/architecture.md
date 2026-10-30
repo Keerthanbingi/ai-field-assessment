@@ -15,4 +15,9 @@ forwarding, and uses a shared-lifespan HTTPX async client. See `task2.md`.
 Task 3 uses a FastAPI streaming gateway and a separate mock LLM provider. A strict incremental
 UTF-8/SSE parser extracts JSON text deltas before a bounded, fail-closed PII redactor processes
 them. The gateway preserves SSE framing and supported metadata and cancels the upstream HTTPX
-stream when the client disconnects. See `task3.md`. Task 4 remains unimplemented.
+stream when the client disconnects. See `task3.md`.
+
+Task 4 uses an authenticated FastAPI completion gateway, `tiktoken` input accounting, and an
+on-disk SQLite reservation ledger. `BEGIN IMMEDIATE` transactions enforce a per-tenant rolling
+token budget across concurrent gateway workers. A bounded HTTPX router attempts the primary once
+and the secondary at most once. See `task4.md`.
